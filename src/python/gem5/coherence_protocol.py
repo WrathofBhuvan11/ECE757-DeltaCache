@@ -46,6 +46,7 @@ class CoherenceProtocol(Enum):
     GPU_VIPER = "GPU_VIPER"
     CHI = "CHI"
     MSI = "MSI"
+    DELTACACHE = "DeltaCache"
 
 
 def get_protocols_str_set():

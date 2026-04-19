@@ -44,7 +44,7 @@ menu "Ruby"
                 If this is set to anything when build with MULTIPLE,
                 it will be ignored unless using Ruby.py, in which case
                 the protocol specified here will appear as the only protocol.
-                Note: This is case sensitive.
+                Note: This is case sensitive
 
         rsource "protocol/Kconfig"
         rsource "../../learning_gem5/part3/Kconfig"

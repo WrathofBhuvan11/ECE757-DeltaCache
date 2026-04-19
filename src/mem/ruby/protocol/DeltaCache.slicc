@@ -1,0 +1,7 @@
+protocol "DeltaCache";
+
+
+// Include your custom state machines (order matters!)
+include "DeltaCache-msg.sm";
+include "DeltaCache-cache.sm";
+include "DeltaCache-dir.sm";
