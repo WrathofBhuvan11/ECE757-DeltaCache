@@ -1,4 +1,4 @@
-# Copyright (c) 2021 The Regents of the University of California
+# Copyright (c) 2022 The Regents of the University of California
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,6 +24,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
 from m5.objects import (
     DMASequencer,
     RubyPortProxy,
@@ -38,139 +39,196 @@ from ....utils.requires import requires
 requires(coherence_protocol_required=CoherenceProtocol.DELTACACHE)
 
 from ....isas import ISA
-from ....utils.override import overrides
 from ...boards.abstract_board import AbstractBoard
 from ..abstract_cache_hierarchy import AbstractCacheHierarchy
+from ..abstract_three_level_cache_hierarchy import (
+    AbstractThreeLevelCacheHierarchy,
+)
 from .abstract_ruby_cache_hierarchy import AbstractRubyCacheHierarchy
-from .caches.mi_example.directory import Directory
-from .caches.mi_example.dma_controller import DMAController
-from .caches.mi_example.l1_cache import L1Cache
+from .caches.deltacache.directory import Directory
+from .caches.deltacache.dma_controller import DMAController
+from .caches.deltacache.l1_cache import L1Cache
+from .caches.deltacache.l2_cache import L2Cache
+from .caches.deltacache.l3_cache import L3Cache
 from .topologies.simple_pt2pt import SimplePt2Pt
 
 
-class DeltaCacheCacheHierarchy(AbstractRubyCacheHierarchy):
-    """
-    The MI_Example cache hierarchy creates a Ruby cache for each code in a
-    simple point-to-point topology.
+class DeltaCacheCacheHierarchy(
+    AbstractRubyCacheHierarchy, AbstractThreeLevelCacheHierarchy
+):
+    """A three-level private-L1-private-L2-shared-L3 MESI hierarchy.
+
+    The on-chip network is a point-to-point all-to-all simple network.
     """
 
-    def __init__(self, size: str, assoc: int):
-        """
-        :param size: The size of each cache in the heirarchy.
-        :param assoc: The associativity of each cache.
-        """
-        super().__init__()
+    def __init__(
+        self,
+        l1i_size: str,
+        l1i_assoc: int,
+        l1d_size: str,
+        l1d_assoc: int,
+        l2_size: str,
+        l2_assoc: int,
+        l3_size: str,
+        l3_assoc: int,
+        num_l3_banks: int,
+    ):
+        AbstractRubyCacheHierarchy.__init__(self=self)
+        AbstractThreeLevelCacheHierarchy.__init__(
+            self,
+            l1i_size=l1i_size,
+            l1i_assoc=l1i_assoc,
+            l1d_size=l1d_size,
+            l1d_assoc=l1d_assoc,
+            l2_size=l2_size,
+            l2_assoc=l2_assoc,
+            l3_size=l3_size,
+            l3_assoc=l3_assoc,
+        )
 
-        self._size = size
-        self._assoc = assoc
+        self._num_l3_banks = num_l3_banks
 
     @overrides(AbstractCacheHierarchy)
     def get_coherence_protocol(self):
         return CoherenceProtocol.DeltaCache
 
-    @overrides(AbstractCacheHierarchy)
     def incorporate_cache(self, board: AbstractBoard) -> None:
         super().incorporate_cache(board)
+        cache_line_size = board.get_cache_line_size()
+
         self.ruby_system = RubySystem()
 
-        # Ruby's global network.
+        # MESI_Three_Level needs 3 virtual networks
+        self.ruby_system.number_of_virtual_networks = 3
+
         self.ruby_system.network = SimplePt2Pt(self.ruby_system)
+        self.ruby_system.network.number_of_virtual_networks = 3
 
-        # MI Example users 5 virtual networks.
-        self.ruby_system.number_of_virtual_networks = 5
-        self.ruby_system.network.number_of_virtual_networks = 5
-
-        # There is a single global list of all of the controllers to make it
-        # easier to connect everything to the global network. This can be
-        # customized depending on the topology/network requirements.
-        # Create one controller for each L1 cache (and the cache mem obj.)
-        # Create a single directory controller (Really the memory cntrl).
-        self._controllers = []
-        for i, core in enumerate(board.get_processor().get_cores()):
-            cache = L1Cache(
-                size=self._size,
-                assoc=self._assoc,
+        self._l1_controllers = []
+        self._l2_controllers = []
+        self._l3_controllers = []
+        cores = board.get_processor().get_cores()
+        for core_idx, core in enumerate(cores):
+            l1_cache = L1Cache(
+                l1i_size=self._l1i_size,
+                l1i_assoc=self._l1i_assoc,
+                l1d_size=self._l1d_size,
+                l1d_assoc=self._l1d_assoc,
                 network=self.ruby_system.network,
                 core=core,
-                cache_line_size=board.get_cache_line_size(),
-                target_isa=board.get_processor().get_isa(),
+                cache_line_size=cache_line_size,
+                target_isa=board.processor.get_isa(),
                 clk_domain=board.get_clock_domain(),
             )
 
-            cache.sequencer = RubySequencer(
-                version=i,
-                dcache=cache.cacheMemory,
-                clk_domain=cache.clk_domain,
+            l1_cache.sequencer = RubySequencer(
+                version=core_idx,
+                dcache=l1_cache.Dcache,
+                clk_domain=l1_cache.clk_domain,
                 ruby_system=self.ruby_system,
             )
 
             if board.has_io_bus():
-                cache.sequencer.connectIOPorts(board.get_io_bus())
+                l1_cache.sequencer.connectIOPorts(board.get_io_bus())
 
-            cache.ruby_system = self.ruby_system
+            l1_cache.ruby_system = self.ruby_system
 
-            core.connect_icache(cache.sequencer.in_ports)
-            core.connect_dcache(cache.sequencer.in_ports)
+            core.connect_icache(l1_cache.sequencer.in_ports)
+            core.connect_dcache(l1_cache.sequencer.in_ports)
 
             core.connect_walker_ports(
-                cache.sequencer.in_ports, cache.sequencer.in_ports
+                l1_cache.sequencer.in_ports, l1_cache.sequencer.in_ports
             )
 
             # Connect the interrupt ports
             if board.get_processor().get_isa() == ISA.X86:
-                int_req_port = cache.sequencer.interrupt_out_port
-                int_resp_port = cache.sequencer.in_ports
+                int_req_port = l1_cache.sequencer.interrupt_out_port
+                int_resp_port = l1_cache.sequencer.in_ports
                 core.connect_interrupt(int_req_port, int_resp_port)
             else:
                 core.connect_interrupt()
 
-            cache.ruby_system = self.ruby_system
-            self._controllers.append(cache)
+            self._l1_controllers.append(l1_cache)
 
-        # Create the directory controllers
-        self._directory_controllers = []
-        for range, port in board.get_mem_ports():
-            dir = Directory(
-                self.ruby_system.network,
-                board.get_cache_line_size(),
-                range,
-                port,
+            # For testing purpose, we use point-to-point topology. So, the
+            # assigned cluster ID is ignored by ruby.
+            # Thus, we set cluster_id to 0.
+            l2_cache = L2Cache(
+                l2_size=self._l2_size,
+                l2_assoc=self._l2_assoc,
+                network=self.ruby_system.network,
+                core=core,
+                num_l3Caches=self._num_l3_banks,
+                cache_line_size=cache_line_size,
+                cluster_id=0,
+                target_isa=board.processor.get_isa(),
+                clk_domain=board.get_clock_domain(),
             )
-            dir.ruby_system = self.ruby_system
-            self._directory_controllers.append(dir)
 
-        # Create the DMA Controllers, if required.
+            l2_cache.ruby_system = self.ruby_system
+            # L0Cache in the ruby backend is l1 cache in stdlib
+            # L1Cache in the ruby backend is l2 cache in stdlib
+            l2_cache.bufferFromL0 = l1_cache.bufferToL1
+            l2_cache.bufferToL0 = l1_cache.bufferFromL1
+
+            self._l2_controllers.append(l2_cache)
+
+        for _ in range(self._num_l3_banks):
+            l3_cache = L3Cache(
+                l3_size=self._l3_size,
+                l3_assoc=self._l3_assoc,
+                network=self.ruby_system.network,
+                num_l3Caches=self._num_l3_banks,
+                cache_line_size=cache_line_size,
+                cluster_id=0,  # cluster_id is ignored in point-to-point topology
+            )
+            l3_cache.ruby_system = self.ruby_system
+            self._l3_controllers.append(l3_cache)
+
+        # TODO: Make this prettier: The problem is not being able to proxy
+        # the ruby system correctly
+        for cache in self._l3_controllers:
+            cache.ruby_system = self.ruby_system
+
+        self._directory_controllers = [
+            Directory(self.ruby_system.network, cache_line_size, range, port)
+            for range, port in board.get_mem_ports()
+        ]
+        # TODO: Make this prettier: The problem is not being able to proxy
+        # the ruby system correctly
+        for dir in self._directory_controllers:
+            dir.ruby_system = self.ruby_system
+
         self._dma_controllers = []
         if board.has_dma_ports():
             dma_ports = board.get_dma_ports()
             for i, port in enumerate(dma_ports):
                 ctrl = DMAController(
-                    self.ruby_system.network, board.get_cache_line_size()
+                    DMASequencer(
+                        version=i,
+                        in_ports=port,
+                        ruby_system=self.ruby_system,
+                    ),
+                    self.ruby_system,
                 )
-                ctrl.dma_sequencer = DMASequencer(
-                    version=i,
-                    in_ports=port,
-                    ruby_system=self.ruby_system,
-                )
-
-                ctrl.ruby_system = self.ruby_system
-                ctrl.dma_sequencer.ruby_system = self.ruby_system
-
                 self._dma_controllers.append(ctrl)
 
-        self.ruby_system.num_of_sequencers = len(self._controllers) + len(
+        self.ruby_system.num_of_sequencers = len(self._l1_controllers) + len(
             self._dma_controllers
         )
-
-        # Connect the controllers.
-        self.ruby_system.controllers = self._controllers
+        self.ruby_system.l1_controllers = self._l1_controllers
+        self.ruby_system.l2_controllers = self._l2_controllers
+        self.ruby_system.l3_controllers = self._l3_controllers
         self.ruby_system.directory_controllers = self._directory_controllers
 
         if len(self._dma_controllers) != 0:
             self.ruby_system.dma_controllers = self._dma_controllers
 
+        # Create the network and connect the controllers.
         self.ruby_system.network.connectControllers(
-            self._controllers
+            self._l1_controllers
+            + self._l2_controllers
+            + self._l3_controllers
             + self._directory_controllers
             + self._dma_controllers
         )
@@ -187,4 +245,6 @@ class DeltaCacheCacheHierarchy(AbstractRubyCacheHierarchy):
     def _reset_version_numbers(self):
         Directory._version = 0
         L1Cache._version = 0
+        L2Cache._version = 0
+        L3Cache._version = 0
         DMAController._version = 0

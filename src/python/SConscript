@@ -221,6 +221,12 @@ PySource('gem5.components.cachehierarchies.ruby.topologies',
 PySource('gem5.components.cachehierarchies.ruby.topologies',
     'gem5/components/cachehierarchies/ruby/topologies/simple_pt2pt.py')
 PySource('gem5.components.cachehierarchies.ruby', 'gem5/components/cachehierarchies/ruby/deltacache_cache_hierarchy.py')
+PySource('gem5.components.cachehierarchies.ruby.caches.deltacache', 'gem5/components/cachehierarchies/ruby/caches/deltacache/__init__.py')
+PySource('gem5.components.cachehierarchies.ruby.caches.deltacache', 'gem5/components/cachehierarchies/ruby/caches/deltacache/directory.py')
+PySource('gem5.components.cachehierarchies.ruby.caches.deltacache', 'gem5/components/cachehierarchies/ruby/caches/deltacache/dma_controller.py')
+PySource('gem5.components.cachehierarchies.ruby.caches.deltacache', 'gem5/components/cachehierarchies/ruby/caches/deltacache/l1_cache.py')
+PySource('gem5.components.cachehierarchies.ruby.caches.deltacache', 'gem5/components/cachehierarchies/ruby/caches/deltacache/l2_cache.py')
+PySource('gem5.components.cachehierarchies.ruby.caches.deltacache', 'gem5/components/cachehierarchies/ruby/caches/deltacache/l3_cache.py')
 
 PySource('gem5.components.devices',
     'gem5/components/devices/__init__.py')
