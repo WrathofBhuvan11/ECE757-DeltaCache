@@ -80,8 +80,59 @@ CacheMemory::CacheMemory(const Params &p)
     m_is_instruction_only_cache = p.is_icache;
     m_resource_stalls = p.resourceStalls;
     m_block_size = p.block_size;  // may be 0 at this point. Updated in init()
+
+    // DeltaCache: read compression params and configure algorithm
+    {
+        using Algo = DeltaCacheCompressionAlgo;
+        const std::string &algoStr = p.delta_cache_algo;
+        if      (algoStr == "PlainBDI") m_dc_algo = Algo::PlainBDI;
+        else if (algoStr == "XorBDI")   m_dc_algo = Algo::XorBDI;
+        else if (algoStr == "DeltaBDI") m_dc_algo = Algo::DeltaBDI;
+        else if (algoStr == "None" || algoStr.empty())
+                                        m_dc_algo = Algo::None;
+        else
+            fatal("CacheMemory: unknown delta_cache_algo '%s' "
+                  "(expected one of: None, PlainBDI, XorBDI, DeltaBDI)",
+                  algoStr);
+    }
+    m_dc_xor_threshold   = p.delta_cache_xor_threshold;
+    m_dc_delta_threshold = p.delta_cache_delta_threshold;
+
+    // DeltaCache: base-candidate search policy + map-table sizing
+    {
+        const std::string &polStr = p.delta_cache_search_policy;
+        if      (polStr == "sameSet")  m_dc_search_policy = DcSearchPolicy::SameSet;
+        else if (polStr == "maptable") m_dc_search_policy = DcSearchPolicy::Maptable;
+        else
+            fatal("CacheMemory: unknown delta_cache_search_policy '%s' "
+                  "(expected one of: sameSet, maptable)", polStr);
+    }
+    m_dc_map_entries = p.delta_cache_map_entries;
+    m_dc_map_bits    = p.delta_cache_map_bits;
+    if (m_dc_map_entries < 1)
+        fatal("CacheMemory: delta_cache_map_entries must be >= 1 (got %d)",
+              m_dc_map_entries);
+    if (m_dc_map_bits < 1 || m_dc_map_bits > 31)
+        fatal("CacheMemory: delta_cache_map_bits must be in [1,31] (got %d)",
+              m_dc_map_bits);
+    if ((1u << m_dc_map_bits) < (unsigned)m_dc_map_entries)
+        fatal("CacheMemory: delta_cache_map_bits=%d cannot index "
+              "delta_cache_map_entries=%d (need 2^bits >= entries)",
+              m_dc_map_bits, m_dc_map_entries);
+    m_dc_map_table.assign(m_dc_map_entries, DcMapEntry{});
+
     m_use_occupancy = dynamic_cast<replacement_policy::WeightedLRU*>(
                                     m_replacementPolicy_ptr) ? true : false;
+}
+
+void
+CacheMemory::setDeltaCacheMapEntries(int n)
+{
+    if (n < 1)
+        fatal("CacheMemory::setDeltaCacheMapEntries: n must be >= 1 (got %d)",
+              n);
+    m_dc_map_entries = n;
+    m_dc_map_table.assign(n, DcMapEntry{});
 }
 
 void
@@ -571,7 +622,23 @@ CacheMemoryStats::CacheMemoryStats(statistics::Group *parent)
       ADD_STAT(m_prefetch_misses, "Number of cache prefetch misses"),
       ADD_STAT(m_prefetch_accesses, "Number of cache prefetch accesses",
                m_prefetch_hits + m_prefetch_misses),
-      ADD_STAT(m_accessModeType, "")
+      ADD_STAT(m_accessModeType, ""),
+
+      // DeltaCache compression-opportunity stats
+      ADD_STAT(dc_profiledLines,   "DeltaCache: total lines profiled for compression"),
+      ADD_STAT(dc_compressedLines, "DeltaCache: lines that compressed below 64B"),
+      ADD_STAT(dc_uncompressedLines,"DeltaCache: lines that did not compress"),
+      ADD_STAT(dc_originalBytes,   "DeltaCache: cumulative original bytes (64 per line)"),
+      ADD_STAT(dc_storedBytes,     "DeltaCache: cumulative estimated stored bytes"),
+      ADD_STAT(dc_plainBDILines,   "DeltaCache: lines profiled under Plain BDI mode"),
+      ADD_STAT(dc_xorBDILines,     "DeltaCache: lines profiled under XOR+BDI mode"),
+      ADD_STAT(dc_deltaBDILines,   "DeltaCache: lines profiled under Delta+BDI mode"),
+      ADD_STAT(dc_xorPaired,       "DeltaCache: XOR+BDI lines where pairing beat plain BDI"),
+      ADD_STAT(dc_deltaPaired,     "DeltaCache: Delta+BDI lines where pairing beat plain BDI"),
+      ADD_STAT(dc_mapHits,         "DeltaCache: maptable lookups that found a valid base candidate"),
+      ADD_STAT(dc_mapMisses,       "DeltaCache: maptable lookups that found an empty slot (installed new candidate)"),
+      ADD_STAT(dc_compressionRatio,"DeltaCache: stored / original bytes (lower = better)",
+               dc_storedBytes / dc_originalBytes)
 {
     numDataArrayReads
         .flags(statistics::nozero);
@@ -816,6 +883,132 @@ void
 CacheMemory::profilePrefetchMiss()
 {
     cacheMemoryStats.m_prefetch_misses++;
+}
+
+
+// =========================================================================
+// DeltaCache compression-opportunity profiling
+// =========================================================================
+
+void
+CacheMemory::recordDeltaCacheCompression(Addr addr, const DataBlock &data)
+{
+    using DC = DeltaCacheCompression;
+    using Algo = DeltaCacheCompressionAlgo;
+
+    if (m_dc_algo == Algo::None)
+        return;
+
+    // Sanity: helper assumes 64-byte lines
+    if (m_block_size != 0 && m_block_size != DeltaCacheCompression::LineBytes) {
+        warn_once("DeltaCache compression skipped: block_size=%d != 64\n",
+                  m_block_size);
+        return;
+    }
+
+    // Convert DataBlock to a fixed-size byte array for the helper
+    DC::Line newLine;
+    for (int i = 0; i < DC::LineBytes; ++i)
+        newLine[i] = data.getByte(i);
+
+    DeltaCacheCompressionResult result;
+
+    if (m_dc_algo == Algo::PlainBDI) {
+        result = DC::plainBDI(newLine);
+        cacheMemoryStats.dc_plainBDILines++;
+
+    } else {
+        // XorBDI / DeltaBDI: pick a base candidate via the configured policy,
+        // then delegate the BDI/threshold accept-or-fall-back to the helper.
+        DeltaCacheCompressionResult chosen;
+        chosen.storedBytes = DC::LineBytes + 1; // sentinel "no candidate yet"
+
+        auto runPair = [&](const DC::Line &candLine, uint64_t candAddr) {
+            return (m_dc_algo == Algo::XorBDI)
+                ? DC::xorBDI  (newLine, candLine, candAddr, m_dc_xor_threshold)
+                : DC::deltaBDI(newLine, candLine, candAddr, m_dc_delta_threshold);
+        };
+
+        if (m_dc_search_policy == DcSearchPolicy::SameSet) {
+            // Legacy: scan all valid lines in the same cache set, pick best
+            int64_t cacheSet = addressToCacheSet(addr);
+            for (int way = 0; way < m_cache_assoc; ++way) {
+                AbstractCacheEntry *cand = m_cache[cacheSet][way];
+                if (!cand || cand->m_Address == makeLineAddress(addr))
+                    continue;
+                if (cand->m_Permission == AccessPermission_Invalid ||
+                    cand->m_Permission == AccessPermission_NotPresent)
+                    continue;
+
+                DC::Line candLine;
+                const DataBlock &candData = cand->getDataBlk();
+                for (int i = 0; i < DC::LineBytes; ++i)
+                    candLine[i] = candData.getByte(i);
+
+                DeltaCacheCompressionResult r = runPair(candLine,
+                                                       cand->m_Address);
+
+                // Best = smallest storedBytes, then fewest nonzero bytes,
+                // then lowest base address (deterministic tie-break)
+                if (r.storedBytes < chosen.storedBytes ||
+                   (r.storedBytes == chosen.storedBytes &&
+                    r.nonzeroBytes < chosen.nonzeroBytes) ||
+                   (r.storedBytes  == chosen.storedBytes &&
+                    r.nonzeroBytes == chosen.nonzeroBytes &&
+                    r.baseAddr < chosen.baseAddr)) {
+                    chosen = r;
+                }
+            }
+        } else {
+            // Maptable: SBL-hash newLine into a direct-mapped table that
+            // points to standalone candidate base lines. O(1) lookup.
+            // (XOR Cache ISCA'25 §5.1.3, project's N-to-1 contribution.)
+            uint32_t h    = DC::computeMapValue(newLine, m_dc_map_bits);
+            uint32_t slot = h % (uint32_t)m_dc_map_entries;
+            DcMapEntry &e = m_dc_map_table[slot];
+
+            if (e.valid) {
+                // Hit: try pairing against the candidate stored in this slot
+                chosen = runPair(e.line, e.addr);
+                cacheMemoryStats.dc_mapHits++;
+            } else {
+                // Miss: install this line as the slot's standalone candidate
+                e.valid = true;
+                e.addr  = makeLineAddress(addr);
+                e.line  = newLine;
+                cacheMemoryStats.dc_mapMisses++;
+                // No partner available: chosen stays at sentinel and we
+                // will fall back to plain BDI below.
+            }
+        }
+
+        // No valid candidate produced (no same-set partner OR map miss)?
+        // Fall back to plain BDI so we never report worse than solo BDI.
+        if (chosen.storedBytes > DC::LineBytes) {
+            chosen = DC::plainBDI(newLine);
+            chosen.algo = m_dc_algo;
+        }
+        result = chosen;
+
+        if (m_dc_algo == Algo::XorBDI) {
+            cacheMemoryStats.dc_xorBDILines++;
+            if (result.pairWon)
+                cacheMemoryStats.dc_xorPaired++;
+        } else {
+            cacheMemoryStats.dc_deltaBDILines++;
+            if (result.pairWon)
+                cacheMemoryStats.dc_deltaPaired++;
+        }
+    }
+
+    // Accumulate stats
+    cacheMemoryStats.dc_profiledLines++;
+    cacheMemoryStats.dc_originalBytes += DC::LineBytes;
+    cacheMemoryStats.dc_storedBytes   += result.storedBytes;
+    if (result.compressed)
+        cacheMemoryStats.dc_compressedLines++;
+    else
+        cacheMemoryStats.dc_uncompressedLines++;
 }
 
 } // namespace ruby

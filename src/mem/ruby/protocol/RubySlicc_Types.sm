@@ -237,6 +237,9 @@ structure (CacheMemory, external = "yes") {
   void profileDemandMiss();
   void profilePrefetchHit();
   void profilePrefetchMiss();
+
+  // DeltaCache compression-opportunity profiling
+  void recordDeltaCacheCompression(Addr, DataBlock);
 }
 
 structure (WireBuffer, inport="yes", outport="yes", external = "yes") {

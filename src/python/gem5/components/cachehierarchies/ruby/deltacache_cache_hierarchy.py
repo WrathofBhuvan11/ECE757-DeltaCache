@@ -72,6 +72,9 @@ class DeltaCacheCacheHierarchy(
         l3_size: str,
         l3_assoc: int,
         num_l3_banks: int,
+        delta_cache_algo: str = "None",
+        delta_cache_xor_threshold: int = 32,
+        delta_cache_delta_threshold: int = 32,
     ):
         AbstractRubyCacheHierarchy.__init__(self=self)
         AbstractThreeLevelCacheHierarchy.__init__(
@@ -87,10 +90,13 @@ class DeltaCacheCacheHierarchy(
         )
 
         self._num_l3_banks = num_l3_banks
+        self._dc_algo              = delta_cache_algo
+        self._dc_xor_threshold     = delta_cache_xor_threshold
+        self._dc_delta_threshold   = delta_cache_delta_threshold
 
     @overrides(AbstractCacheHierarchy)
     def get_coherence_protocol(self):
-        return CoherenceProtocol.DeltaCache
+        return CoherenceProtocol.DELTACACHE
 
     def incorporate_cache(self, board: AbstractBoard) -> None:
         super().incorporate_cache(board)
@@ -181,6 +187,9 @@ class DeltaCacheCacheHierarchy(
                 num_l3Caches=self._num_l3_banks,
                 cache_line_size=cache_line_size,
                 cluster_id=0,  # cluster_id is ignored in point-to-point topology
+                delta_cache_algo=self._dc_algo,
+                delta_cache_xor_threshold=self._dc_xor_threshold,
+                delta_cache_delta_threshold=self._dc_delta_threshold,
             )
             l3_cache.ruby_system = self.ruby_system
             self._l3_controllers.append(l3_cache)
