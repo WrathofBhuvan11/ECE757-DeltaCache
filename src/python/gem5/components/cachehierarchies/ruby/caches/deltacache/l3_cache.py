@@ -27,7 +27,7 @@
 import math
 
 from m5.objects import (
-    MESI_Three_Level_L2Cache_Controller,
+    L2Cache_Controller,
     MessageBuffer,
     RubyCache,
 )
@@ -35,7 +35,7 @@ from m5.objects import (
 
 # L2Cache_Controller is ruby backend's terminology corresponding to
 # L3 cache in stdlib.
-class L3Cache(MESI_Three_Level_L2Cache_Controller):
+class L3Cache(L2Cache_Controller):
     _version = 0
 
     @classmethod
@@ -51,6 +51,9 @@ class L3Cache(MESI_Three_Level_L2Cache_Controller):
         num_l3Caches,
         cache_line_size,
         cluster_id,
+        delta_cache_algo: str = "None",
+        delta_cache_xor_threshold: int = 32,
+        delta_cache_delta_threshold: int = 32,
     ):
         super().__init__()
 
@@ -59,6 +62,9 @@ class L3Cache(MESI_Three_Level_L2Cache_Controller):
             size=l3_size,
             assoc=l3_assoc,
             start_index_bit=self.getIndexBit(num_l3Caches, cache_line_size),
+            delta_cache_algo=delta_cache_algo,
+            delta_cache_xor_threshold=delta_cache_xor_threshold,
+            delta_cache_delta_threshold=delta_cache_delta_threshold,
         )
 
         self.transitions_per_cycle = 4

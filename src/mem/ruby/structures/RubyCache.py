@@ -54,3 +54,18 @@ class RubyCache(SimObject):
     dataAccessLatency = Param.Cycles(1, "cycles for a data array access")
     tagAccessLatency = Param.Cycles(1, "cycles for a tag array access")
     resourceStalls = Param.Bool(False, "stall if there is a resource failure")
+
+    # DeltaCache compression profiling parameters
+    # algo: "None" | "PlainBDI" | "XorBDI" | "DeltaBDI"
+    delta_cache_algo = Param.String(
+        "None",
+        "DeltaCache compression algorithm: None, PlainBDI, XorBDI, DeltaBDI"
+    )
+    delta_cache_xor_threshold = Param.Int(
+        32,
+        "XOR+BDI acceptance threshold: max nonzero bytes in XOR line"
+    )
+    delta_cache_delta_threshold = Param.Int(
+        32,
+        "Delta+BDI acceptance threshold: max nonzero bytes in delta line"
+    )

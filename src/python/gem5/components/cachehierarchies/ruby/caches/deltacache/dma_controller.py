@@ -25,12 +25,12 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from m5.objects import (
-    MESI_Three_Level_DMA_Controller,
+    DMA_Controller,
     MessageBuffer,
 )
 
 
-class DMAController(MESI_Three_Level_DMA_Controller):
+class DMAController(DMA_Controller):
     _version = 0
 
     @classmethod

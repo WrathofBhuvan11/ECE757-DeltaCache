@@ -49,6 +49,7 @@
 #include "mem/cache/replacement_policies/base.hh"
 #include "mem/cache/replacement_policies/replaceable_entry.hh"
 #include "mem/ruby/common/DataBlock.hh"
+#include "mem/ruby/common/DeltaCacheCompression.hh"
 #include "mem/ruby/protocol/CacheRequestType.hh"
 #include "mem/ruby/protocol/CacheResourceType.hh"
 #include "mem/ruby/slicc_interface/AbstractCacheEntry.hh"
@@ -220,6 +221,27 @@ class CacheMemory : public SimObject
         return ruby::makeLineAddress(addr, floorLog2(m_block_size));
     }
 
+    // ---------------------------------------------------------------
+    // DeltaCache compression profiling
+    // ---------------------------------------------------------------
+  public:
+    // Called from SLICC (L2cache.sm) every time a line's DataBlock is
+    // installed or updated in this cache.  Records compression-opportunity
+    // stats without modifying the DataBlock or coherence behaviour.
+    void recordDeltaCacheCompression(Addr addr, const DataBlock &data);
+
+    // Select the algorithm at runtime (default: None)
+    void setDeltaCacheCompressionAlgo(DeltaCacheCompressionAlgo algo)
+    { m_dc_algo = algo; }
+
+    void setDeltaCacheXorThreshold(int t)  { m_dc_xor_threshold  = t; }
+    void setDeltaCacheDeltaThreshold(int t){ m_dc_delta_threshold = t; }
+
+  private:
+    DeltaCacheCompressionAlgo m_dc_algo          = DeltaCacheCompressionAlgo::None;
+    int                       m_dc_xor_threshold  = 32;
+    int                       m_dc_delta_threshold = 32;
+
     private:
       struct CacheMemoryStats : public statistics::Group
       {
@@ -251,6 +273,22 @@ class CacheMemory : public SimObject
           statistics::Formula m_prefetch_accesses;
 
           statistics::Vector m_accessModeType;
+
+          // DeltaCache compression-opportunity stats
+          statistics::Scalar dc_profiledLines;
+          statistics::Scalar dc_compressedLines;
+          statistics::Scalar dc_uncompressedLines;
+          statistics::Scalar dc_originalBytes;
+          statistics::Scalar dc_storedBytes;
+          statistics::Scalar dc_plainBDILines;
+          statistics::Scalar dc_xorBDILines;
+          statistics::Scalar dc_deltaBDILines;
+          // Number of XorBDI/DeltaBDI lines whose paired form actually
+          // beat the plain-BDI fallback (paired < solo). Lets us tell
+          // "pairing actually helped" apart from "we attempted pairing".
+          statistics::Scalar dc_xorPaired;
+          statistics::Scalar dc_deltaPaired;
+          statistics::Formula dc_compressionRatio;
       } cacheMemoryStats;
 
     public:

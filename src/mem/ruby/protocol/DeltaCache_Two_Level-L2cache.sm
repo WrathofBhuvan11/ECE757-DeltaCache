@@ -684,6 +684,8 @@ machine(MachineType:L2Cache, "MESI Directory L2 Cache CMP")
         cache_entry.Dirty := in_msg.Dirty;
       }
     }
+    // DeltaCache: profile compression opportunity after data is installed
+    L2cache.recordDeltaCacheCompression(address, cache_entry.DataBlk);
   }
 
   action(mr_writeDataToCacheFromRequest, "mr", desc="Write data from response queue to cache") {
@@ -692,6 +694,8 @@ machine(MachineType:L2Cache, "MESI Directory L2 Cache CMP")
       if (in_msg.Dirty) {
         cache_entry.DataBlk := in_msg.DataBlk;
         cache_entry.Dirty := in_msg.Dirty;
+        // DeltaCache: profile compression opportunity after dirty data installed
+        L2cache.recordDeltaCacheCompression(address, cache_entry.DataBlk);
       }
     }
   }

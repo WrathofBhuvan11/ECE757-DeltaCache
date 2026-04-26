@@ -43,7 +43,15 @@ class L2Cache(MESI_Two_Level_L2Cache_Controller):
         return cls._version - 1
 
     def __init__(
-        self, l2_size, l2_assoc, network, num_l2Caches, cache_line_size
+        self,
+        l2_size,
+        l2_assoc,
+        network,
+        num_l2Caches,
+        cache_line_size,
+        delta_cache_algo: str = "None",
+        delta_cache_xor_threshold: int = 32,
+        delta_cache_delta_threshold: int = 32,
     ):
         super().__init__()
 
@@ -56,6 +64,9 @@ class L2Cache(MESI_Two_Level_L2Cache_Controller):
             size=l2_size,
             assoc=l2_assoc,
             start_index_bit=self.getIndexBit(num_l2Caches),
+            delta_cache_algo=delta_cache_algo,
+            delta_cache_xor_threshold=delta_cache_xor_threshold,
+            delta_cache_delta_threshold=delta_cache_delta_threshold,
         )
 
         self.transitions_per_cycle = 4
