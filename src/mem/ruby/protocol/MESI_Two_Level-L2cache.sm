@@ -680,7 +680,6 @@ machine(MachineType:L2Cache, "MESI Directory L2 Cache CMP")
     peek(responseL2Network_in, ResponseMsg) {
       assert(is_valid(cache_entry));
       cache_entry.DataBlk := in_msg.DataBlk;
-      L2cache.recordDeltaCacheCompression(address, cache_entry.DataBlk);
       if (in_msg.Dirty) {
         cache_entry.Dirty := in_msg.Dirty;
       }
@@ -692,7 +691,6 @@ machine(MachineType:L2Cache, "MESI Directory L2 Cache CMP")
       assert(is_valid(cache_entry));
       if (in_msg.Dirty) {
         cache_entry.DataBlk := in_msg.DataBlk;
-        L2cache.recordDeltaCacheCompression(address, cache_entry.DataBlk);
         cache_entry.Dirty := in_msg.Dirty;
       }
     }

@@ -26,8 +26,8 @@ the Ruby L2 controller. No external trace, no offline analysis.
 import argparse
 
 from gem5.components.boards.simple_board import SimpleBoard
-from gem5.components.cachehierarchies.ruby.mesi_two_level_cache_hierarchy import (
-    MESITwoLevelCacheHierarchy,
+from gem5.components.cachehierarchies.ruby.deltacache_cache_hierarchy import (
+    DeltaCacheCacheHierarchy,
 )
 from gem5.components.memory.single_channel import SingleChannelDDR4_2400
 from gem5.components.processors.cpu_types import CPUTypes
@@ -111,8 +111,13 @@ parser.add_argument("--l1i-size",     type=str, default="32KiB")
 parser.add_argument("--l1i-assoc",    type=int, default=8)
 parser.add_argument("--l1d-size",     type=str, default="32KiB")
 parser.add_argument("--l1d-assoc",    type=int, default=8)
-parser.add_argument("--l2-size",      type=str, default="1MiB")
+parser.add_argument("--l2-size",      type=str, default="256KiB")
 parser.add_argument("--l2-assoc",     type=int, default=16)
+parser.add_argument("--l3-size",      type=str, default="2MiB")
+parser.add_argument("--l3-assoc",     type=int, default=16)
+parser.add_argument("--num-l3-banks", type=int, default=2)
+# kept for backward-compat with old run_params; effectively replaced by
+# --num-l3-banks on the 3-level DeltaCache hierarchy (LLC is L3, not L2).
 parser.add_argument("--num-l2-banks", type=int, default=2)
 
 # Memory
@@ -121,31 +126,36 @@ parser.add_argument("--mem-size",     type=str, default="2GiB")
 args = parser.parse_args()
 
 # ---------------------------------------------------------------------------
-# Sanity: this config is X86 + MESI_Two_Level only (matches build/X86/gem5.opt)
+# Sanity: this config is X86 + DeltaCache (matches build/X86_DeltaCache/gem5.opt).
+# DeltaCache is a 3-level MESI clone with profiling hooks at the LLC (L3).
 # ---------------------------------------------------------------------------
 requires(
     isa_required=ISA.X86,
-    coherence_protocol_required=CoherenceProtocol.MESI_TWO_LEVEL,
+    coherence_protocol_required=CoherenceProtocol.DELTACACHE,
 )
 
 # ---------------------------------------------------------------------------
-# 1. Cache hierarchy (MESI_Two_Level, with our DeltaCache profiling hook)
+# 1. Cache hierarchy (DeltaCache 3-level: per-core L1+L2, shared L3 LLC)
 # ---------------------------------------------------------------------------
-cache_hierarchy = MESITwoLevelCacheHierarchy(
+cache_hierarchy = DeltaCacheCacheHierarchy(
     l1i_size=args.l1i_size,
     l1i_assoc=args.l1i_assoc,
     l1d_size=args.l1d_size,
     l1d_assoc=args.l1d_assoc,
     l2_size=args.l2_size,
     l2_assoc=args.l2_assoc,
-    num_l2_banks=args.num_l2_banks,
+    l3_size=args.l3_size,
+    l3_assoc=args.l3_assoc,
+    num_l3_banks=args.num_l3_banks,
     delta_cache_algo=args.delta_cache_compression,
     delta_cache_xor_threshold=args.delta_cache_xor_threshold,
     delta_cache_delta_threshold=args.delta_cache_delta_threshold,
-    delta_cache_search_policy=args.delta_cache_search_policy,
-    delta_cache_map_entries=args.delta_cache_map_entries,
-    delta_cache_map_bits=args.delta_cache_map_bits,
 )
+# Note: --delta-cache-search-policy / --delta-cache-map-entries / --delta-cache-map-bits
+# are accepted at the CLI for backward compatibility but DeltaCacheCacheHierarchy
+# does not yet wire them through to L3Cache. Wire-up is a separate small change
+# in src/python/gem5/components/cachehierarchies/ruby/deltacache_cache_hierarchy.py
+# and caches/deltacache/l3_cache.py if you need maptable mode.
 
 # ---------------------------------------------------------------------------
 # 2. Memory + processor
@@ -182,8 +192,9 @@ print(f"[ruby_se] delta threshold    : {args.delta_cache_delta_threshold}")
 print(f"[ruby_se] search policy      : {args.delta_cache_search_policy}")
 print(f"[ruby_se] map entries / bits : {args.delta_cache_map_entries} / "
       f"{args.delta_cache_map_bits}")
-print(f"[ruby_se] L2 (LLC)           : {args.l2_size} / {args.l2_assoc}-way "
-      f"/ {args.num_l2_banks} banks")
+print(f"[ruby_se] L2 (private)       : {args.l2_size} / {args.l2_assoc}-way")
+print(f"[ruby_se] L3 (LLC)           : {args.l3_size} / {args.l3_assoc}-way "
+      f"/ {args.num_l3_banks} banks")
 
 # ---------------------------------------------------------------------------
 # 4. Run
@@ -194,5 +205,5 @@ print("Starting SE-mode Ruby simulation with DeltaCache profiling...")
 simulator.run()
 print("Simulation finished successfully")
 print()
-print("Stats: grep '\\.l2_controllers[0-9]*\\.L2cache\\.dc_' "
+print("Stats: grep '\\.l3_controllers[0-9]*\\.L2cache\\.dc_' "
       "<outdir>/stats.txt")
