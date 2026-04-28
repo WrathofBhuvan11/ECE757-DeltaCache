@@ -237,41 +237,10 @@ class CacheMemory : public SimObject
     void setDeltaCacheXorThreshold(int t)  { m_dc_xor_threshold  = t; }
     void setDeltaCacheDeltaThreshold(int t){ m_dc_delta_threshold = t; }
 
-    // ---------------------------------------------------------
-    // N-to-1 Delta Cache base-candidate search policy
-    //   SameSet  : choose the base from lines already in this cache set
-    //              (legacy profiler behaviour; address-locality search)
-    //   Maptable : SBL-hash the new line into a direct-mapped map table
-    //              of standalone base candidates (XOR Cache §5.1.3 /
-    //              project's N-to-1 contribution)
-    // ---------------------------------------------------------
-    enum class DcSearchPolicy { SameSet, Maptable };
-
-    void setDeltaCacheSearchPolicy(DcSearchPolicy p) { m_dc_search_policy = p; }
-    void setDeltaCacheMapEntries(int n);
-    void setDeltaCacheMapBits(int b)                 { m_dc_map_bits    = b; }
-
   private:
     DeltaCacheCompressionAlgo m_dc_algo          = DeltaCacheCompressionAlgo::None;
     int                       m_dc_xor_threshold  = 32;
     int                       m_dc_delta_threshold = 32;
-
-    // N-to-1 map-table state (only used when m_dc_search_policy == Maptable)
-    DcSearchPolicy m_dc_search_policy = DcSearchPolicy::SameSet;
-    int            m_dc_map_entries   = 128;
-    int            m_dc_map_bits      = 7;
-
-    // Each map entry holds one standalone candidate base line. `valid` says
-    // whether the slot has been populated; `addr` is the line address used
-    // for stats / future invalidation, and `line` is the 64-byte payload
-    // we XOR / delta against.
-    struct DcMapEntry
-    {
-        bool                              valid = false;
-        uint64_t                          addr  = 0;
-        DeltaCacheCompression::Line       line  {};
-    };
-    std::vector<DcMapEntry> m_dc_map_table;
 
     private:
       struct CacheMemoryStats : public statistics::Group
@@ -319,12 +288,6 @@ class CacheMemory : public SimObject
           // "pairing actually helped" apart from "we attempted pairing".
           statistics::Scalar dc_xorPaired;
           statistics::Scalar dc_deltaPaired;
-          // Map-table outcomes (only nonzero under maptable search policy):
-          //   dc_mapHits   : map slot was valid and we paired against it
-          //   dc_mapMisses : map slot was empty / first time we saw this hash
-          //                  (we install the new line as the candidate)
-          statistics::Scalar dc_mapHits;
-          statistics::Scalar dc_mapMisses;
           statistics::Formula dc_compressionRatio;
       } cacheMemoryStats;
 

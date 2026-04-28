@@ -290,46 +290,5 @@ DeltaCacheCompression::deltaBDI(const Line &newLine,
     return res;
 }
 
-// ----------------------------------------------------------
-// Map-value hash for the N-to-1 Delta Cache map table.
-//
-// Sparse Byte Labeling (SBL) hash from XOR Cache, ISCA'25 §5.1.3:
-//   - View the 64-byte line as 8 little-endian 8-byte words.
-//   - Per word, use only the most-significant 6 bytes (skip byte
-//     offsets 0,1 within the word).
-//   - Per used byte, emit a 1-bit "nonzero?" sparse label.
-//   - Total: 8 * 6 = 48 sparse label bits.
-//   - XOR-fold the 48 bits into a mapBits-wide value.
-//
-// Two value-similar lines collide with high probability, which makes
-// the map table an O(1) base-candidate lookup.
-// ----------------------------------------------------------
-uint32_t
-DeltaCacheCompression::computeMapValue(const Line &line, int mapBits)
-{
-    if (mapBits <= 0) return 0;
-
-    // Step 1: build sparse byte labels into bits [0..47] of `labels`.
-    uint64_t labels = 0;
-    int bitPos = 0;
-    for (int w = 0; w < LineBytes; w += 8) {
-        // MSB 6 bytes of each little-endian word = offsets 2..7
-        for (int b = 2; b < 8; ++b) {
-            if (line[w + b] != 0)
-                labels |= (uint64_t(1) << bitPos);
-            ++bitPos;
-        }
-    }
-
-    // Step 2: XOR-fold into mapBits-wide value.
-    uint32_t mask = (mapBits >= 32) ? 0xFFFFFFFFu
-                                    : ((uint32_t(1) << mapBits) - 1);
-    uint32_t hash = 0;
-    for (int shift = 0; shift < 48; shift += mapBits) {
-        hash ^= static_cast<uint32_t>((labels >> shift) & mask);
-    }
-    return hash & mask;
-}
-
 } // namespace ruby
 } // namespace gem5

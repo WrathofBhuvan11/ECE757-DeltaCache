@@ -82,30 +82,6 @@ parser.add_argument(
 parser.add_argument("--delta-cache-xor-threshold",   type=int, default=32)
 parser.add_argument("--delta-cache-delta-threshold", type=int, default=32)
 
-# N-to-1 base-candidate search policy (the project's actual contribution).
-#   sameSet  : legacy profiler, scan lines already in the same cache set
-#   maptable : SBL-hash newLine into a small direct-mapped map table of
-#              standalone candidate base lines (XOR Cache ISCA'25 §5.1.3).
-parser.add_argument(
-    "--delta-cache-search-policy",
-    type=str,
-    default="sameSet",
-    choices=["sameSet", "maptable"],
-    help="Base-candidate selection policy for XorBDI/DeltaBDI.",
-)
-parser.add_argument(
-    "--delta-cache-map-entries",
-    type=int,
-    default=128,
-    help="Map-table entry count when --delta-cache-search-policy=maptable.",
-)
-parser.add_argument(
-    "--delta-cache-map-bits",
-    type=int,
-    default=7,
-    help="Map-table SBL hash width in bits; 2^bits must be >= map-entries.",
-)
-
 # Cache geometry
 parser.add_argument("--l1i-size",     type=str, default="32KiB")
 parser.add_argument("--l1i-assoc",    type=int, default=8)
@@ -151,11 +127,6 @@ cache_hierarchy = DeltaCacheCacheHierarchy(
     delta_cache_xor_threshold=args.delta_cache_xor_threshold,
     delta_cache_delta_threshold=args.delta_cache_delta_threshold,
 )
-# Note: --delta-cache-search-policy / --delta-cache-map-entries / --delta-cache-map-bits
-# are accepted at the CLI for backward compatibility but DeltaCacheCacheHierarchy
-# does not yet wire them through to L3Cache. Wire-up is a separate small change
-# in src/python/gem5/components/cachehierarchies/ruby/deltacache_cache_hierarchy.py
-# and caches/deltacache/l3_cache.py if you need maptable mode.
 
 # ---------------------------------------------------------------------------
 # 2. Memory + processor
@@ -189,9 +160,6 @@ print(f"[ruby_se] num cores          : {args.num_cores}")
 print(f"[ruby_se] compression algo   : {args.delta_cache_compression}")
 print(f"[ruby_se] xor   threshold    : {args.delta_cache_xor_threshold}")
 print(f"[ruby_se] delta threshold    : {args.delta_cache_delta_threshold}")
-print(f"[ruby_se] search policy      : {args.delta_cache_search_policy}")
-print(f"[ruby_se] map entries / bits : {args.delta_cache_map_entries} / "
-      f"{args.delta_cache_map_bits}")
 print(f"[ruby_se] L2 (private)       : {args.l2_size} / {args.l2_assoc}-way")
 print(f"[ruby_se] L3 (LLC)           : {args.l3_size} / {args.l3_assoc}-way "
       f"/ {args.num_l3_banks} banks")

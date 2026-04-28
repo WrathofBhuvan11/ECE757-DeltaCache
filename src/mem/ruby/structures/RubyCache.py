@@ -69,22 +69,3 @@ class RubyCache(SimObject):
         32,
         "Delta+BDI acceptance threshold: max nonzero bytes in delta line"
     )
-
-    # N-to-1 Delta Cache base-candidate selection policy
-    #   "sameSet"  : pick a base from the lines already in this cache set
-    #                (the legacy/baseline behaviour of this profiler)
-    #   "maptable" : SBL-hash a line into a small direct-mapped map table
-    #                that points to standalone candidate base lines
-    #                (XOR Cache paper §5.1.3 / project's N-to-1 contribution)
-    delta_cache_search_policy = Param.String(
-        "sameSet",
-        "Base-candidate selection: sameSet | maptable"
-    )
-    delta_cache_map_entries = Param.Int(
-        128,
-        "Map-table entry count for maptable search policy (paper uses 128)"
-    )
-    delta_cache_map_bits = Param.Int(
-        7,
-        "Map-table hash width in bits; should satisfy 2^bits >= map_entries"
-    )

@@ -132,20 +132,6 @@ class DeltaCacheCompression
         int            threshold = 32);
 
     // ------------------------------------------------------------------
-    // Map-value hash for the N-to-1 Delta Cache map table.
-    //
-    // Implements the Sparse Byte Labeling (SBL) hash used in the XOR Cache
-    // paper (Pan & San Miguel, ISCA'25, Section 5.1.3): for each 8-byte
-    // word, take only the most significant 6 bytes, generate a 1-bit
-    // sparse byte label per byte (1 if nonzero), then XOR-fold the
-    // resulting 48 label bits into a `mapBits`-wide map value.
-    //
-    // Two value-similar lines will produce the same map value with high
-    // probability, so the map table can find a good base candidate in O(1).
-    // ------------------------------------------------------------------
-    static uint32_t computeMapValue(const Line &line, int mapBits);
-
-    // ------------------------------------------------------------------
     // Convert a gem5 DataBlock to a Line for algorithm use.
     // Caller must ensure DataBlock is allocated and block_size == LineBytes.
     // ------------------------------------------------------------------

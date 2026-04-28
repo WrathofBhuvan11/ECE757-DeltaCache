@@ -73,9 +73,6 @@ class MESITwoLevelCacheHierarchy(
         delta_cache_algo: str = "None",
         delta_cache_xor_threshold: int = 32,
         delta_cache_delta_threshold: int = 32,
-        delta_cache_search_policy: str = "sameSet",
-        delta_cache_map_entries: int = 128,
-        delta_cache_map_bits: int = 7,
     ):
         AbstractRubyCacheHierarchy.__init__(self=self)
         AbstractTwoLevelCacheHierarchy.__init__(
@@ -92,9 +89,6 @@ class MESITwoLevelCacheHierarchy(
         self._delta_cache_algo = delta_cache_algo
         self._delta_cache_xor_threshold = delta_cache_xor_threshold
         self._delta_cache_delta_threshold = delta_cache_delta_threshold
-        self._delta_cache_search_policy = delta_cache_search_policy
-        self._delta_cache_map_entries = delta_cache_map_entries
-        self._delta_cache_map_bits = delta_cache_map_bits
 
     @overrides(AbstractCacheHierarchy)
     def get_coherence_protocol(self):
@@ -166,9 +160,6 @@ class MESITwoLevelCacheHierarchy(
                 delta_cache_algo=self._delta_cache_algo,
                 delta_cache_xor_threshold=self._delta_cache_xor_threshold,
                 delta_cache_delta_threshold=self._delta_cache_delta_threshold,
-                delta_cache_search_policy=self._delta_cache_search_policy,
-                delta_cache_map_entries=self._delta_cache_map_entries,
-                delta_cache_map_bits=self._delta_cache_map_bits,
             )
             for _ in range(self._num_l2_banks)
         ]
