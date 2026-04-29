@@ -56,6 +56,14 @@ def define_options(parser):
         default=False,
         help="Enable Ruby hardware prefetcher",
     )
+    parser.add_argument(
+        "--ruby-tester-mode",
+        action="store_true",
+        default=False,
+        help="Adversarial RubyTester harness: raise the per-sequencer "
+        "deadlock_threshold instead of capping max_outstanding_requests, "
+        "so real-workload runs keep representative MLP.",
+    )
     return
 
 
@@ -144,12 +152,12 @@ def create_system(
                 clk_domain=clk_domain,
                 dcache=l0d_cache,
                 ruby_system=ruby_system,
-                # DeltaCache: cap in-flight misses per CPU to relieve L1
-                # message-queue backlog under multicore RubyTester stress.
-                # Default is 16; with 4 CPUs and tiny RubyTester caches
-                # the L0->L1 queue backs up ~12k cycles, blowing the
-                # 50k-cycle deadlock threshold. 4 is a conservative cap.
-                max_outstanding_requests=4,
+                # RubyTester at 4+ CPUs with tiny caches is adversarial;
+                # raise the watchdog rather than capping MLP, so real
+                # workloads keep the default 16 outstanding requests.
+                deadlock_threshold=(
+                    2_000_000 if options.ruby_tester_mode else 500_000
+                ),
             )
 
             l0_cntrl.sequencer = cpu_seq

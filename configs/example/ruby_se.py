@@ -115,7 +115,13 @@ parser.add_argument("--l2-size",      type=str, default="256KiB")
 parser.add_argument("--l2-assoc",     type=int, default=16)
 parser.add_argument("--l3-size",      type=str, default="2MiB")
 parser.add_argument("--l3-assoc",     type=int, default=16)
-parser.add_argument("--num-l3-banks", type=int, default=2)
+parser.add_argument(
+    "--num-l3-banks",
+    type=int,
+    default=None,
+    help="Number of LLC banks. If unset, defaults to the next power of two "
+         ">= --num-cores so each core has a dedicated bank under contention.",
+)
 # kept for backward-compat with old run_params; effectively replaced by
 # --num-l3-banks on the 3-level DeltaCache hierarchy (LLC is L3, not L2).
 parser.add_argument("--num-l2-banks", type=int, default=2)
@@ -124,6 +130,13 @@ parser.add_argument("--num-l2-banks", type=int, default=2)
 parser.add_argument("--mem-size",     type=str, default="2GiB")
 
 args = parser.parse_args()
+
+if args.num_l3_banks is None:
+    n = max(1, args.num_cores)
+    pow2 = 1
+    while pow2 < n:
+        pow2 *= 2
+    args.num_l3_banks = pow2
 
 # ---------------------------------------------------------------------------
 # Sanity: this config is X86 + DeltaCache (matches build/X86_DeltaCache/gem5.opt).
