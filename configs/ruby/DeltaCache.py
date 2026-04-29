@@ -229,6 +229,7 @@ def create_system(
             l2_cntrl = DeltaCache_L2Cache_Controller(
                 version=i * num_l2caches_per_cluster + j,
                 L2cache=l2_cache,
+                mapTable=DeltaMapTable(),
                 cluster_id=i,
                 transitions_per_cycle=options.l2_transitions_per_cycle,
                 ruby_system=ruby_system,

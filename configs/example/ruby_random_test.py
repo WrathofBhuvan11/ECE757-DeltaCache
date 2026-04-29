@@ -101,6 +101,12 @@ tester = RubyTester(
     check_flush=check_flush,
     checks_to_complete=args.maxloads,
     wakeup_frequency=args.wakeup_freq,
+    # The harness has its own watchdog (default 50k cycles) separate from
+    # RubySequencer.deadlock_threshold. Multi-CPU adversarial runs need it
+    # raised in tandem.
+    deadlock_threshold=(
+        2_000_000 if getattr(args, "ruby_tester_mode", False) else 50_000
+    ),
 )
 
 #

@@ -27,6 +27,7 @@
 import math
 
 from m5.objects import (
+    DeltaMapTable,
     L2Cache_Controller,
     MessageBuffer,
     RubyCache,
@@ -66,6 +67,8 @@ class L3Cache(L2Cache_Controller):
             delta_cache_xor_threshold=delta_cache_xor_threshold,
             delta_cache_delta_threshold=delta_cache_delta_threshold,
         )
+
+        self.mapTable = DeltaMapTable()
 
         self.transitions_per_cycle = 4
         self.cluster_id = cluster_id

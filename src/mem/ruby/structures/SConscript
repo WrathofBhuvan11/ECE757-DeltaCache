@@ -60,3 +60,6 @@ Source('ALUFreeListArray.cc')
 Source('TBEStorage.cc')
 if env['CONF']['RUBY_PROTOCOL_CHI']:
     Source('MN_TBETable.cc')
+if env['CONF'].get('RUBY_PROTOCOL_DeltaCache'):
+    SimObject('deltacache/DeltaMapTable.py', sim_objects=['DeltaMapTable'])
+    Source('deltacache/DeltaMapTable.cc')
