@@ -6,7 +6,7 @@ for the simulator and all tests and regressions.
 The gem5 simulator is a modular platform for computer-system architecture
 research, encompassing system-level architecture as well as processor
 microarchitecture. It is primarily used to evaluate new hardware designs,
-system software changes, and compile-time and run-time system optimizations.
+system software changes, and compile-time and run-time system optimizations. 
 
 The main website can be found at <http://www.gem5.org>.
 
